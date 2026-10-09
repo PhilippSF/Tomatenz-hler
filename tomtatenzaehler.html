@@ -1,0 +1,535 @@
+<title>Lisas Pomodoro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one centered column. Phase tabs on top, big progress ring with the time, round dots, three controls, collapsible settings. The accent color follows the current phase. */
+:root {
+  --bg: #f2f5f3;
+  --surface: #ffffff;
+  --fg: #13201c;
+  --muted: #58695f;
+  --line: #d3dcd7;
+  --focus: #d23f2b;
+  --short: #1c7f63;
+  --long: #3556c8;
+  --on-accent: #ffffff;
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body: 'Instrument Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1614; --surface: #162120; --fg: #e7efeb; --muted: #9aaea6; --line: #28392f;
+    --focus: #ff7560; --short: #4fd1a5; --long: #8ea6ff; --on-accent: #0e1614;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1614; --surface: #162120; --fg: #e7efeb; --muted: #9aaea6; --line: #28392f;
+  --focus: #ff7560; --short: #4fd1a5; --long: #8ea6ff; --on-accent: #0e1614;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  padding-inline: 16px;
+  padding-block: 24px 40px;
+}
+.app {
+  --accent: var(--focus);
+  max-width: 420px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.app[data-phase="short"] { --accent: var(--short); }
+.app[data-phase="long"] { --accent: var(--long); }
+
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.top h1 { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.today { font-size: 0.875rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.tab {
+  font: inherit; font-size: 0.875rem; font-weight: 500;
+  color: var(--muted); background: transparent; border: 0; border-radius: 7px;
+  padding: 10px 6px; cursor: pointer; min-width: 0;
+}
+.tab[aria-selected="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.tab:not([aria-selected="true"]):hover { color: var(--fg); }
+
+.dial { position: relative; width: min(78vw, 320px); aspect-ratio: 1; max-width: 100%; margin-inline: auto; }
+.dial svg { display: block; width: 100%; height: 100%; }
+.track { fill: none; stroke: var(--line); stroke-width: 12; }
+.arc { fill: none; stroke: var(--accent); stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset 0.25s linear, stroke 0.3s; }
+.center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 6px; }
+.label { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.time { font-family: var(--font-mono); font-weight: 700; font-size: clamp(2.75rem, 15vw, 4.25rem); letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+
+.rounds { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.dots { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); background: transparent; }
+.dot.done { background: var(--focus); border-color: var(--focus); }
+.dot.current { border-color: var(--focus); }
+.roundtext { font-size: 0.875rem; color: var(--muted); }
+
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn {
+  font: inherit; font-weight: 600; font-size: 1rem; cursor: pointer;
+  padding: 14px 16px; border-radius: 10px; min-width: 0;
+  color: var(--fg); background: var(--surface); border: 1px solid var(--line);
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary {
+  grid-column: 1 / -1; font-size: 1.125rem; padding: 18px 16px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+}
+.btn.primary:hover { filter: brightness(1.06); }
+.tab:focus-visible, .btn:focus-visible, summary:focus-visible, input:focus-visible {
+  outline: 3px solid var(--accent); outline-offset: 2px;
+}
+
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+summary { cursor: pointer; padding: 14px 16px; font-weight: 600; list-style-position: inside; }
+.settings { display: grid; gap: 16px; padding: 4px 16px 18px; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; color: var(--muted); min-width: 0; }
+.field input {
+  font: inherit; font-family: var(--font-mono); font-size: 1.125rem; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; min-width: 0;
+}
+.check { display: flex; gap: 10px; align-items: center; font-size: 0.9375rem; cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+.hint { font-size: 0.8125rem; color: var(--muted); text-align: center; margin: 0; }
+kbd { font-family: var(--font-mono); font-size: 0.75rem; padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
+
+.who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sub { font-size: 0.8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.note {
+  display: flex; flex-direction: column; justify-content: center; gap: 8px;
+  min-height: 7.5rem; padding: 18px 18px 20px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+}
+.note-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.note-text { font-family: var(--font-display); font-weight: 500; font-size: 1.1875rem; line-height: 1.4; margin: 0; text-wrap: balance; }
+.note-sub { margin: 0; font-size: 0.9375rem; color: var(--muted); line-height: 1.45; }
+.note.swap { animation: note-in 0.45s ease-out; }
+@keyframes note-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .arc { transition: none; }
+  .note.swap { animation: none; }
+}
+</style>
+
+<main class="app" id="app" data-phase="focus">
+  <div class="top">
+    <div class="who">
+      <h1>Lisas Pomodoro</h1>
+      <div class="sub" id="sub">Diplomarbeit</div>
+    </div>
+    <div class="today" id="today">Heute noch keine Runde</div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Phase">
+    <button class="tab" role="tab" id="tab-focus" data-phase="focus" aria-selected="true">Fokus</button>
+    <button class="tab" role="tab" id="tab-short" data-phase="short" aria-selected="false">Kurze Pause</button>
+    <button class="tab" role="tab" id="tab-long" data-phase="long" aria-selected="false">Lange Pause</button>
+  </div>
+
+  <div class="dial">
+    <svg viewBox="0 0 260 260" aria-hidden="true">
+      <circle class="track" cx="130" cy="130" r="114"></circle>
+      <circle class="arc" id="arc" cx="130" cy="130" r="114" transform="rotate(-90 130 130)"></circle>
+    </svg>
+    <div class="center">
+      <div class="label" id="label">Fokus</div>
+      <div class="time" id="time" role="timer">25:00</div>
+    </div>
+  </div>
+
+  <div class="rounds">
+    <div class="dots" id="dots" aria-hidden="true"></div>
+    <div class="roundtext" id="roundtext">Runde 1 von 4</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn primary" id="toggle" type="button">Starten</button>
+    <button class="btn" id="reset" type="button">Zurücksetzen</button>
+    <button class="btn" id="skip" type="button">Überspringen</button>
+  </div>
+
+  <section class="note" id="note" aria-live="polite">
+    <div class="note-label">Für Lisa</div>
+    <p class="note-text" id="note-text">Hallo Lisa! Heute schreibst du ein Stück Diplomarbeit weiter.</p>
+    <p class="note-sub" id="note-sub" hidden></p>
+  </section>
+
+  <details>
+    <summary>Einstellungen</summary>
+    <div class="settings">
+      <div class="fields">
+        <label class="field" for="set-focus">Fokus (Min.)
+          <input id="set-focus" type="number" inputmode="numeric" min="1" max="120" value="25">
+        </label>
+        <label class="field" for="set-short">Kurze Pause (Min.)
+          <input id="set-short" type="number" inputmode="numeric" min="1" max="60" value="5">
+        </label>
+        <label class="field" for="set-long">Lange Pause (Min.)
+          <input id="set-long" type="number" inputmode="numeric" min="1" max="90" value="15">
+        </label>
+        <label class="field" for="set-every">Runden bis lange Pause
+          <input id="set-every" type="number" inputmode="numeric" min="2" max="8" value="4">
+        </label>
+      </div>
+      <label class="check" for="set-auto"><input id="set-auto" type="checkbox"> Nächste Phase automatisch starten</label>
+      <label class="check" for="set-sound"><input id="set-sound" type="checkbox" checked> Signalton und Vibration am Ende</label>
+    </div>
+  </details>
+
+  <p class="hint"><kbd>Leertaste</kbd> startet und pausiert. Während der Timer läuft, bleibt der Bildschirm an.</p>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var DEF = { focus: 25, short: 5, long: 15, every: 4, auto: false, sound: true };
+  var NAMES = { focus: 'Fokus', short: 'Kurze Pause', long: 'Lange Pause' };
+  var C = 2 * Math.PI * 114;
+
+  function load(key, fallback) {
+    try { var v = JSON.parse(localStorage.getItem(key) || 'null'); return v || fallback; } catch (e) { return fallback; }
+  }
+  function save(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }
+  function dayKey() { return new Date().toLocaleDateString('sv-SE'); }
+
+  var cfg = Object.assign({}, DEF, load('pomo-cfg', {}));
+  var today = load('pomo-day', { date: dayKey(), n: 0, min: 0 });
+  if (today.date !== dayKey()) today = { date: dayKey(), n: 0, min: 0 };
+
+  var allTime = load('pomo-total', { min: 0 });
+
+  var MSG = {
+    hello: [
+      'Hallo Lisa! Heute schreibst du ein Stück Diplomarbeit weiter. Eine Runde reicht für den Anfang.',
+      'Schön, dass du da bist, Lisa. Wir sind gespannt, wie weit du heute kommst.'
+    ],
+    ready: [
+      'Neue Runde, frischer Kopf. Bereit, wenn du es bist.',
+      'Ein Absatz nach dem anderen, mehr braucht es nicht.',
+      'Wir glauben an dich, Lisa.'
+    ],
+    start: [
+      'Los geht’s. Du musst nicht perfekt sein, nur dranbleiben.',
+      'Handy weg, Kopf an. Du schaffst das.',
+      'Ein Satz ist besser als kein Satz. Fang einfach an.',
+      'Wir drücken dir die Daumen, Lisa.'
+    ],
+    resume: [
+      'Weiter geht’s, du bist mittendrin.',
+      'Schön, dass du wieder dabei bist. Weiter so.'
+    ],
+    pause: [
+      'Kurz durchatmen. Wenn du bereit bist, geht’s weiter.',
+      'Pausen sind erlaubt. Du machst das gut.'
+    ],
+    mid: [
+      'Halbzeit! Das Schwerste, der Anfang, liegt schon hinter dir.',
+      'Die Hälfte ist geschafft. Du bist im Flow, bleib dran.',
+      'Halbzeit, Lisa. Jeder Satz bringt dich der Abgabe näher.'
+    ],
+    late: [
+      'Nur noch ein paar Minuten, gleich hast du es geschafft.',
+      'Fast da. Schreib den Gedanken noch zu Ende.',
+      'Die letzten Minuten schaffst du auch noch.'
+    ],
+    praise: [
+      'Geschafft! Wir sind stolz auf dich, Lisa. Das war eine richtig produktive Runde.',
+      'Stark gemacht, Lisa. Jede Runde zählt, auch wenn der Fortschritt klein wirkt.',
+      'Wir sind stolz auf dich. Du bleibst dran, und genau das bringt dich ans Ziel.',
+      'Gut gemacht! Wieder ein Stück Diplomarbeit, das fertig ist und nicht mehr im Kopf kreist.'
+    ],
+    milestone: {
+      1: 'Die erste Runde des Tages ist geschafft, Lisa. Der Anfang ist das Schwerste, und den hast du hinter dir. Wir sind stolz auf dich!',
+      3: 'Schon drei Runden heute! Du bist richtig im Schwung.',
+      4: 'Vier Runden heute, das ist großartig. Wir ziehen den Hut vor dir, Lisa.',
+      6: 'Sechs Runden an einem Tag. Wow, Lisa. Vergiss nicht, auch mal Feierabend zu machen.',
+      8: 'Acht Runden. Auf diesen Tag kannst du stolz sein. Jetzt darfst du wirklich Pause machen.'
+    },
+    longBreak: 'Ein ganzer Zyklus geschafft! Wir ziehen den Hut vor dir, Lisa. Jetzt hast du dir eine richtig lange Pause verdient.',
+    tipShort: [
+      'Steh kurz auf und streck dich.',
+      'Trink ein Glas Wasser.',
+      'Schau kurz aus dem Fenster, das tut den Augen gut.',
+      'Atme dreimal tief durch.'
+    ],
+    tipLong: [
+      'Geh kurz an die frische Luft.',
+      'Iss eine Kleinigkeit und lass den Bildschirm aus.',
+      'Ein kleiner Spaziergang macht den Kopf frei.'
+    ],
+    back: [
+      'Pause vorbei. Frischer Kopf, neue Runde. Du schaffst das.',
+      'Zurück an die Arbeit, Lisa. Du hast schon so viel geschafft.',
+      'Bereit für die nächste Runde? Wir sind bei dir.'
+    ]
+  };
+  var lastPick = {};
+  function pick(key, arr) {
+    var i = Math.floor(Math.random() * arr.length);
+    if (arr.length > 1 && i === lastPick[key]) i = (i + 1) % arr.length;
+    lastPick[key] = i;
+    return arr[i];
+  }
+  function say(main, sub) {
+    el.noteText.textContent = main;
+    el.noteSub.textContent = sub || '';
+    el.noteSub.hidden = !sub;
+    el.note.classList.remove('swap');
+    void el.note.offsetWidth;
+    el.note.classList.add('swap');
+  }
+
+  var phase = 'focus', round = 1, running = false, endAt = 0;
+  var midDone = false, lateDone = false;
+  var total = cfg.focus * 60000, remaining = total;
+  var ctx = null, wake = null;
+
+  var el = {
+    app: $('app'), arc: $('arc'), time: $('time'), label: $('label'), dots: $('dots'),
+    roundtext: $('roundtext'), toggle: $('toggle'), today: $('today'), sub: $('sub'),
+    note: $('note'), noteText: $('note-text'), noteSub: $('note-sub')
+  };
+  el.arc.setAttribute('stroke-dasharray', C.toFixed(2));
+
+  function minutes(p) { return cfg[p] * 60000; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function fmt(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000));
+    return pad(Math.floor(s / 60)) + ':' + pad(s % 60);
+  }
+
+  function render() {
+    el.app.setAttribute('data-phase', phase);
+    el.time.textContent = fmt(remaining);
+    el.label.textContent = NAMES[phase];
+    el.arc.setAttribute('stroke-dashoffset', (C * (1 - remaining / total)).toFixed(2));
+    document.title = running ? fmt(remaining) + ' · ' + NAMES[phase] : 'Lisas Pomodoro';
+
+    el.toggle.textContent = running ? 'Pause' : (remaining < total ? 'Fortsetzen' : 'Starten');
+
+    ['focus', 'short', 'long'].forEach(function (p) {
+      $('tab-' + p).setAttribute('aria-selected', p === phase ? 'true' : 'false');
+    });
+
+    var done = phase === 'focus' ? round - 1 : (phase === 'short' ? round : cfg.every);
+    var html = '';
+    for (var i = 0; i < cfg.every; i++) {
+      var cls = 'dot' + (i < done ? ' done' : '') + (phase === 'focus' && i === round - 1 ? ' current' : '');
+      html += '<span class="' + cls + '"></span>';
+    }
+    el.dots.innerHTML = html;
+    el.roundtext.textContent = phase === 'long'
+      ? 'Zyklus geschafft'
+      : 'Runde ' + Math.min(round, cfg.every) + ' von ' + cfg.every;
+
+    el.today.textContent = today.n === 0
+      ? 'Heute noch keine Runde'
+      : 'Heute: ' + today.n + (today.n === 1 ? ' Runde' : ' Runden') + ' · ' + today.min + ' Min.';
+    el.sub.textContent = 'Diplomarbeit' + (allTime.min > 0
+      ? ' · insgesamt ' + Math.floor(allTime.min / 60) + ' Std. ' + (allTime.min % 60) + ' Min. Fokus'
+      : '');
+  }
+
+  function requestWake() {
+    try {
+      if ('wakeLock' in navigator && !wake) {
+        navigator.wakeLock.request('screen').then(function (w) {
+          wake = w;
+          w.addEventListener('release', function () { wake = null; });
+        }).catch(function () { wake = null; });
+      }
+    } catch (e) { wake = null; }
+  }
+  function releaseWake() {
+    try { if (wake) wake.release(); } catch (e) {}
+    wake = null;
+  }
+
+  function ensureAudio() {
+    try {
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx && ctx.state === 'suspended') ctx.resume();
+    } catch (e) { ctx = null; }
+  }
+  function signal(toBreak) {
+    if (!cfg.sound) return;
+    try { if (navigator.vibrate) navigator.vibrate([250, 120, 250, 120, 250]); } catch (e) {}
+    if (!ctx) return;
+    var freqs = toBreak ? [660, 880, 1100] : [1100, 880, 660];
+    freqs.forEach(function (f, i) {
+      var t = ctx.currentTime + i * 0.22;
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + 0.22);
+    });
+  }
+
+  function showReady() {
+    if (phase === 'focus') {
+      say(pick('ready', MSG.ready));
+    } else if (phase === 'short') {
+      say('Zeit zum Durchatmen. Die Pause hast du dir verdient.', pick('tipShort', MSG.tipShort));
+    } else {
+      say('Lange Pause. Zeit, den Kopf richtig frei zu bekommen.', pick('tipLong', MSG.tipLong));
+    }
+  }
+
+  function setPhase(p, quiet) {
+    phase = p;
+    total = remaining = minutes(p);
+    running = false;
+    midDone = lateDone = false;
+    releaseWake();
+    render();
+    if (!quiet) showReady();
+  }
+
+  function advance(quiet) {
+    if (phase === 'focus') {
+      setPhase(round >= cfg.every ? 'long' : 'short', quiet);
+    } else {
+      if (phase === 'long') round = 1; else round++;
+      setPhase('focus', quiet);
+    }
+  }
+
+  function start() {
+    ensureAudio();
+    var fresh = remaining === total;
+    endAt = Date.now() + remaining;
+    running = true;
+    requestWake();
+    render();
+    if (phase === 'focus') {
+      say(fresh ? pick('start', MSG.start) : pick('resume', MSG.resume));
+    }
+  }
+  function pause() {
+    remaining = Math.max(0, endAt - Date.now());
+    running = false;
+    releaseWake();
+    render();
+    if (phase === 'focus') say(pick('pause', MSG.pause));
+  }
+
+  function complete() {
+    var wasFocus = phase === 'focus';
+    var longNext = false, n = 0;
+    if (wasFocus) {
+      if (today.date !== dayKey()) today = { date: dayKey(), n: 0, min: 0 };
+      today.n++;
+      today.min += cfg.focus;
+      save('pomo-day', today);
+      allTime.min += cfg.focus;
+      save('pomo-total', allTime);
+      n = today.n;
+      longNext = round >= cfg.every;
+    }
+    signal(wasFocus);
+    advance(true);
+    if (wasFocus) {
+      say(
+        longNext ? MSG.longBreak : (MSG.milestone[n] || pick('praise', MSG.praise)),
+        longNext ? pick('tipLong', MSG.tipLong) : pick('tipShort', MSG.tipShort)
+      );
+    } else {
+      say(pick('back', MSG.back));
+    }
+    if (cfg.auto) start();
+  }
+
+  function tick() {
+    if (!running) return;
+    remaining = endAt - Date.now();
+    if (remaining <= 0) { complete(); return; }
+    render();
+    if (phase === 'focus') {
+      if (!midDone && 1 - remaining / total >= 0.5) {
+        midDone = true;
+        say(pick('mid', MSG.mid));
+      }
+      if (!lateDone && total >= 12 * 60000 && remaining <= 5 * 60000) {
+        lateDone = true;
+        midDone = true;
+        say(pick('late', MSG.late));
+      }
+    }
+  }
+
+  el.toggle.addEventListener('click', function () { running ? pause() : start(); });
+  $('reset').addEventListener('click', function () { setPhase(phase); });
+  $('skip').addEventListener('click', function () { advance(); });
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+    b.addEventListener('click', function () { setPhase(b.getAttribute('data-phase')); });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var t = e.target && e.target.tagName;
+    if (e.code === 'Space' && t !== 'INPUT' && t !== 'BUTTON' && t !== 'SUMMARY') {
+      e.preventDefault();
+      running ? pause() : start();
+    }
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      if (running) requestWake();
+      tick();
+    }
+  });
+
+  // Settings
+  var inputs = { focus: $('set-focus'), short: $('set-short'), long: $('set-long'), every: $('set-every') };
+  var limits = { focus: [1, 120], short: [1, 60], long: [1, 90], every: [2, 8] };
+  function syncInputs() {
+    Object.keys(inputs).forEach(function (k) { inputs[k].value = cfg[k]; });
+    $('set-auto').checked = !!cfg.auto;
+    $('set-sound').checked = !!cfg.sound;
+  }
+  Object.keys(inputs).forEach(function (k) {
+    inputs[k].addEventListener('change', function () {
+      var v = parseInt(inputs[k].value, 10);
+      if (isNaN(v)) v = DEF[k];
+      v = Math.min(limits[k][1], Math.max(limits[k][0], v));
+      cfg[k] = v;
+      inputs[k].value = v;
+      save('pomo-cfg', cfg);
+      if (!running) {
+        if (k === 'every' && round > cfg.every) round = cfg.every;
+        if (remaining === total) setPhase(phase); else render();
+      } else {
+        render();
+      }
+    });
+  });
+  $('set-auto').addEventListener('change', function (e) { cfg.auto = e.target.checked; save('pomo-cfg', cfg); });
+  $('set-sound').addEventListener('change', function (e) { cfg.sound = e.target.checked; save('pomo-cfg', cfg); });
+
+  syncInputs();
+  setPhase('focus', true);
+  say(pick('hello', MSG.hello));
+  setInterval(tick, 250);
+})();
+</script>
